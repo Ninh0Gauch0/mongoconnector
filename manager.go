@@ -30,21 +30,21 @@ func CloseConnection() {
 	}
 }
 
-// ExecuteInsert - 
-func ExecuteInsert(db string, collection string,obj MetadataObject) (int, error) {
+// ExecuteInsert -
+func ExecuteInsert(db string, collection string, obj MetadataObject) (int, error) {
 
 	c := session.DB("hrs").C("recipes")
 
 	// Insert Datas
 	err := c.Insert(obj)
 	if err != nil {
-		return nil, err
+		return -1, err
 	}
 
 	return 0, nil
 }
 
-// ExecuteSearchOne - 
+// ExecuteSearchOne -
 func ExecuteSearchOne() MetadataObject {
 	c := session.DB("hrs").C("recipes")
 
@@ -64,16 +64,16 @@ func ExecuteSearchOne(queryTimeout int){
 */
 
 // ExecuteSearch -
-func ExecuteSearch(queryTimeout int) []MetadataObject, error {
+func ExecuteSearch(queryTimeout int) ([]MetadataObject, error) {
 	var results []MetadataObject
 	c := session.DB("hrs").C("recipes")
 
 	err := c.Find(nil).Sort("-timestamp").All(&results)
 	if err != nil {
-		return _, err
+		return nil, err
 	}
 	fmt.Println("Results All: ", results)
-	return results
+	return nil, results
 }
 
 /*
