@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Ninh0Gauch0/hrstypes"
 	"github.com/globalsign/mgo"
 	"github.com/globalsign/mgo/bson"
 )
@@ -31,7 +32,7 @@ func CloseConnection() {
 }
 
 // ExecuteInsert -
-func ExecuteInsert(db string, collection string, obj MetadataObject) (int, error) {
+func ExecuteInsert(db string, collection string, obj hrstypes.MetadataObject) (int, error) {
 
 	c := session.DB("hrs").C("recipes")
 
@@ -45,15 +46,15 @@ func ExecuteInsert(db string, collection string, obj MetadataObject) (int, error
 }
 
 // ExecuteSearchOne -
-func ExecuteSearchOne() MetadataObject {
+func ExecuteSearchOne() (hrstypes.MetadataObject, error) {
 	c := session.DB("hrs").C("recipes")
 
-	result := Recipe{}
+	result := hrstypes.Recipe{}
 	err := c.Find(bson.M{"name": "Ale"}).Select(bson.M{"phone": 0}).One(&result)
 	if err != nil {
 		return nil, err
 	}
-	return &result
+	return &result, nil
 }
 
 /*
@@ -64,8 +65,8 @@ func ExecuteSearchOne(queryTimeout int){
 */
 
 // ExecuteSearch -
-func ExecuteSearch(queryTimeout int) ([]MetadataObject, error) {
-	var results []MetadataObject
+func ExecuteSearch(queryTimeout int) ([]hrstypes.MetadataObject, error) {
+	var results []hrstypes.MetadataObject
 	c := session.DB("hrs").C("recipes")
 
 	err := c.Find(nil).Sort("-timestamp").All(&results)
@@ -73,7 +74,7 @@ func ExecuteSearch(queryTimeout int) ([]MetadataObject, error) {
 		return nil, err
 	}
 	fmt.Println("Results All: ", results)
-	return nil, results
+	return results, nil
 }
 
 /*
