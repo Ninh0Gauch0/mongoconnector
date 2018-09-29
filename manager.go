@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Ninh0Gauch0/hrstypes"
 	"github.com/globalsign/mgo"
 	"github.com/globalsign/mgo/bson"
+	"github.com/ninh0gauch0/hrstypes"
 )
 
 var (
