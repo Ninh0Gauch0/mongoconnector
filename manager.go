@@ -1,7 +1,9 @@
 package mongoconnector
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/globalsign/mgo"
@@ -11,11 +13,30 @@ import (
 
 var (
 	session *mgo.Session
+	address string
+	db      string
+	coll    string
+	conf    *MongoConf
 )
+
+// Init - always called at the begining
+func Init() bool {
+	//filename is the path to the json config file
+	file, err := os.Open("./config/mongo.json")
+	if err != nil {
+		return false
+	}
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&conf)
+	if err != nil {
+		return false
+	}
+	return true
+}
 
 // Connect -
 func Connect() error {
-	session, err := mgo.Dial("127.0.0.1")
+	session, err := mgo.Dial(address)
 	if err != nil {
 		return err
 	}
@@ -32,9 +53,9 @@ func CloseConnection() {
 }
 
 // ExecuteInsert -
-func ExecuteInsert(db string, collection string, obj hrstypes.MetadataObject) (int, error) {
+func ExecuteInsert(collection string, obj hrstypes.MetadataObject) (int, error) {
 
-	c := session.DB("hrs").C("recipes")
+	c := session.DB(db).C(collection)
 
 	// Insert Datas
 	err := c.Insert(obj)
@@ -45,12 +66,12 @@ func ExecuteInsert(db string, collection string, obj hrstypes.MetadataObject) (i
 	return 0, nil
 }
 
-// ExecuteSearchOne -
-func ExecuteSearchOne() (hrstypes.MetadataObject, error) {
-	c := session.DB("hrs").C("recipes")
+// ExecuteSearchByID -
+func ExecuteSearchByID(collection string, id string) (hrstypes.MetadataObject, error) {
+	c := session.DB(db).C(collection)
 
 	result := hrstypes.Recipe{}
-	err := c.Find(bson.M{"name": "Ale"}).Select(bson.M{"phone": 0}).One(&result)
+	err := c.Find(bson.M{"ID": id}).One(&result)
 	if err != nil {
 		return nil, err
 	}
@@ -65,9 +86,9 @@ func ExecuteSearchOne(queryTimeout int){
 */
 
 // ExecuteSearch -
-func ExecuteSearch(queryTimeout int) ([]hrstypes.MetadataObject, error) {
+func ExecuteSearch(collection string, queryTimeout int) ([]hrstypes.MetadataObject, error) {
 	var results []hrstypes.MetadataObject
-	c := session.DB("hrs").C("recipes")
+	c := session.DB(db).C(collection)
 
 	err := c.Find(nil).Sort("-timestamp").All(&results)
 	if err != nil {
@@ -86,8 +107,8 @@ func ExecuteSearch() int{
 */
 
 // ExecuteUpdate -
-func ExecuteUpdate() int {
-	c := session.DB("hrs").C("recipes")
+func ExecuteUpdate(collection string) int {
+	c := session.DB(db).C(collection)
 	colQuerier := bson.M{"name": "Ale"}
 	change := bson.M{"$set": bson.M{"phone": "+86 99 8888 7777", "timestamp": time.Now()}}
 	err := c.Update(colQuerier, change)
