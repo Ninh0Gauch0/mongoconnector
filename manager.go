@@ -1,6 +1,7 @@
 package mongoconnector
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,57 +9,111 @@ import (
 
 	"github.com/globalsign/mgo"
 	"github.com/globalsign/mgo/bson"
+	"github.com/leemcloughlin/logfile"
 	"github.com/ninh0gauch0/hrstypes"
+	log "github.com/sirupsen/logrus"
+)
+
+const (
+	version = "0.8.3-beta"
 )
 
 var (
-	session *mgo.Session
-	address string
-	db      string
-	coll    string
-	conf    *MongoConf
+	baseContext   = context.Background()
+	contextLogger *log.Entry
+	logFileOn     = true
+	logFile       *logfile.LogFile
 )
 
 // Init - always called at the begining
-func Init() bool {
+func (m *Manager) Init() bool {
+	contextLogger.Infof("Initializing HR mongo connector...")
+	// logger configuration
+	logger := log.StandardLogger()
+	logger.Formatter = &log.TextFormatter{
+		ForceColors:      true,
+		FullTimestamp:    true,
+		QuoteEmptyFields: true,
+	}
+	logger.Out = os.Stdout
+	logger.SetLevel(log.InfoLevel)
+
+	contextLogger = logger.WithFields(log.Fields{
+		"mongo connector": "Home Recipes DB",
+	})
+
+	// Init logfile
+	logFile, err := logfile.New(
+		&logfile.LogFile{
+			FileName: "hrMongoConnector.log",
+			MaxSize:  1000 * 1024,
+			Flags:    logfile.FileOnly | logfile.RotateOnStart})
+	if err != nil {
+		m.logger.Errorf("Failed to create log file %s: %s", logFile.FileName, err.Error())
+		logFileOn = false
+	}
+	log.SetOutput(logFile)
+
 	//filename is the path to the json config file
 	file, err := os.Open("./config/mongo.json")
 	if err != nil {
 		return false
 	}
 	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&conf)
+	err = decoder.Decode(m.Conf)
 	if err != nil {
 		return false
+
 	}
+	m.Address = m.Conf.GetHost() + ":" + m.Conf.GetPort()
+	m.initialized = true
 	return true
 }
 
-// Connect -
-func Connect() error {
-	session, err := mgo.Dial(address)
+// connect -
+func (m *Manager) connect() error {
+
+	if m.initialized != true {
+		err := m.Init()
+		if err {
+			return fmt.Errorf("Error initializating mongo connector")
+		}
+	}
+
+	m.logger.Infof("Starting mongo connector...")
+
+	session, err := mgo.Dial(m.Address)
 	if err != nil {
 		return err
 	}
 	defer session.Close()
 	session.SetMode(mgo.Monotonic, true)
+	m.Session = session
+
 	return nil
 }
 
 // CloseConnection -
-func CloseConnection() {
-	if session != nil {
-		session.Close()
+func (m *Manager) CloseConnection() {
+
+	if m.Session != nil {
+		m.Session.Close()
 	}
 }
 
 // ExecuteInsert -
-func ExecuteInsert(collection string, obj hrstypes.MetadataObject) (int, error) {
+func (m *Manager) ExecuteInsert(collection string, obj MetadataObject) (int, error) {
 
-	c := session.DB(db).C(collection)
+	err := m.connect()
+
+	if err != nil {
+		return -1, err
+	}
+
+	c := m.Session.DB(m.Conf.GetDB()).C(collection)
 
 	// Insert Datas
-	err := c.Insert(obj)
+	err = c.Insert(obj)
 	if err != nil {
 		return -1, err
 	}
@@ -67,30 +122,38 @@ func ExecuteInsert(collection string, obj hrstypes.MetadataObject) (int, error) 
 }
 
 // ExecuteSearchByID -
-func ExecuteSearchByID(collection string, id string) (hrstypes.MetadataObject, error) {
-	c := session.DB(db).C(collection)
+func (m *Manager) ExecuteSearchByID(collection string, id string) (MetadataObject, error) {
+
+	err := m.connect()
+
+	if err != nil {
+		return nil, err
+	}
+
+	c := m.Session.DB(m.Conf.GetDB()).C(collection)
 
 	result := hrstypes.Recipe{}
-	err := c.Find(bson.M{"ID": id}).One(&result)
+	err = c.Find(bson.M{"id": id}).One(&result)
 	if err != nil {
+		m.customInfoLogger("No results for ID %s: %s", id, err.Error())
 		return nil, err
 	}
 	return &result, nil
 }
 
-/*
-// ExecuteSearchOne -
-func ExecuteSearchOne(queryTimeout int){
-
-}
-*/
-
 // ExecuteSearch -
-func ExecuteSearch(collection string, queryTimeout int) ([]hrstypes.MetadataObject, error) {
-	var results []hrstypes.MetadataObject
-	c := session.DB(db).C(collection)
+func (m *Manager) ExecuteSearch(collection string, query string) ([]MetadataObject, error) {
+	var results []MetadataObject
 
-	err := c.Find(nil).Sort("-timestamp").All(&results)
+	err := m.connect()
+
+	if err != nil {
+		return nil, err
+	}
+
+	c := m.Session.DB(m.Conf.GetDB()).C(collection)
+
+	err = c.Find(nil).Sort("-id").All(&results)
 	if err != nil {
 		return nil, err
 	}
@@ -98,74 +161,51 @@ func ExecuteSearch(collection string, queryTimeout int) ([]hrstypes.MetadataObje
 	return results, nil
 }
 
-/*
-
-// ExecuteSearch -
-func ExecuteSearch() int{
-	return 0
-}
-*/
-
 // ExecuteUpdate -
-func ExecuteUpdate(collection string) int {
-	c := session.DB(db).C(collection)
-	colQuerier := bson.M{"name": "Ale"}
-	change := bson.M{"$set": bson.M{"phone": "+86 99 8888 7777", "timestamp": time.Now()}}
-	err := c.Update(colQuerier, change)
+func (m *Manager) ExecuteUpdate(collection string, id string) (int, error) {
+
+	err := m.connect()
+
 	if err != nil {
-		panic(err)
+		return -1, err
 	}
 
-	return 0
-}
+	c := m.Session.DB(m.Conf.GetDB()).C(collection)
+	colQuerier := bson.M{"id": id}
+	change := bson.M{"$set": bson.M{"phone": "+86 99 8888 7777", "timestamp": time.Now()}}
+	err = c.Update(colQuerier, change)
+	if err != nil {
+		return -1, err
+	}
 
-/*
-
-// ExecuteUpdate -
-func executeUpdate(queryTimeout int) {
-	return 0
+	return 0, nil
 }
-*/
 
 // ExecuteDelete -
-func ExecuteDelete() int {
+func (m *Manager) ExecuteDelete(id string) int {
 	return 0
 }
 
-/**
- * Execute delete.
- *
- * @param delete the delete
- * @return the long
- */
-// public abstract long executeDelete(SearchableObject delete);
+// CustomErrorLogger - Writes error
+func (m *Manager) customErrorLogger(msg string, args ...interface{}) {
+	MSG := "[ERROR] " + msg
 
-/**
- * Execute update.
- *
- * @param find the find
- * @param update the update
- * @return the long
- */
-// public abstract long executeUpdate(SearchableObject find, MetadataObject update);
+	m.logger.Errorf(MSG, args)
+	m.logger.Errorln()
 
-/**
- * Execute update.
- *
- * @param find the find
- * @param update the update
- * @param queryTimeout the query timeout
- * @return the long
- */
-//public abstract long executeUpdate(SearchableObject find, MetadataObject update, long queryTimeout);
+	if logFileOn {
+		log.Printf(MSG, args)
+	}
+}
 
-/**
- * Execute bulk insert.
- *
- * @param objects the objects
- */
-//public abstract void executeBulkInsert(List<MetadataObject> objects);
+// customInfoLogger - Writes info
+func (m *Manager) customInfoLogger(msg string, args ...interface{}) {
+	MSG := "[INFO] " + msg
 
-//public abstract List<OPLogResume> showOplog(long queryTimeout);
+	m.logger.Infof(MSG, args)
+	m.logger.Infoln()
 
-//public abstract List<OPLogResume> showOplog();
+	if logFileOn {
+		log.Printf(MSG, args)
+	}
+}

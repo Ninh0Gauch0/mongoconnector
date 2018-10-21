@@ -1,4 +1,4 @@
-package mongoconnector
+package types
 
 // MongoConf DTO
 type MongoConf struct {
