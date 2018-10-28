@@ -7,11 +7,22 @@ import (
 
 // Recipe domain
 type Recipe struct {
+	OID         string       `bson:"_id"`
 	ID          string       `bson:"id"`
 	Name        string       `bson:"name"`
 	Description string       `bson:"description"`
 	Steps       []string     `bson:"steps"`
 	Ingredients []Ingredient `bson:"ingredients"`
+}
+
+// GetOID function
+func (r *Recipe) GetOID() string {
+	return r.OID
+}
+
+// SetOID function
+func (r *Recipe) SetOID(id string) {
+	r.OID = id
 }
 
 // GetID function
