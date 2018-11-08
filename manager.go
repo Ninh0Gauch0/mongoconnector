@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/globalsign/mgo"
 	"github.com/globalsign/mgo/bson"
@@ -53,6 +52,26 @@ func (m *Manager) Init() bool {
 		logFileOn = false
 	}
 	log.SetOutput(logFile)
+
+	/*
+
+		//Reading configuration file
+		dat, err := ioutil.ReadFile("config/mongo.json")
+		if err != nil {
+			customErrorLogger(s, "Failed to read configuration mongodb file %s: %s", "mongoconf", err.Error())
+			return false
+		}
+
+		// Taking mongodb conf
+		var result mongoCon.MongoConf
+		err = json.Unmarshal(dat, &result)
+		if err != nil {
+			customErrorLogger(s, "Failed to unmarshal configuration json extracted from %s file: %s", "mongoconf", err.Error())
+			return false
+		}
+
+
+	*/
 
 	//filename is the path to the json config file
 	file, err := os.Open("./config/mongo.json")
@@ -132,13 +151,13 @@ func (m *Manager) ExecuteSearchByID(collection string, id string) (MetadataObjec
 
 	c := m.Session.DB(m.Conf.GetDB()).C(collection)
 
-	result := hrstypes.Recipe{}
+	result := &hrstypes.Recipe{}
 	err = c.Find(bson.M{"id": id}).One(&result)
 	if err != nil {
 		m.customInfoLogger("No results for ID %s: %s", id, err.Error())
 		return nil, err
 	}
-	return &result, nil
+	return result, nil
 }
 
 // ExecuteSearch -
@@ -162,7 +181,7 @@ func (m *Manager) ExecuteSearch(collection string, query string) ([]MetadataObje
 }
 
 // ExecuteUpdate -
-func (m *Manager) ExecuteUpdate(collection string, id string) (int, error) {
+func (m *Manager) ExecuteUpdate(collection string, id string, obj MetadataObject) (int, error) {
 
 	err := m.connect()
 
@@ -172,7 +191,7 @@ func (m *Manager) ExecuteUpdate(collection string, id string) (int, error) {
 
 	c := m.Session.DB(m.Conf.GetDB()).C(collection)
 	colQuerier := bson.M{"id": id}
-	change := bson.M{"$set": bson.M{"phone": "+86 99 8888 7777", "timestamp": time.Now()}}
+	change := bson.M{"$set": obj}
 	err = c.Update(colQuerier, change)
 	if err != nil {
 		return -1, err
@@ -182,8 +201,22 @@ func (m *Manager) ExecuteUpdate(collection string, id string) (int, error) {
 }
 
 // ExecuteDelete -
-func (m *Manager) ExecuteDelete(id string) int {
-	return 0
+func (m *Manager) ExecuteDelete(collection string, id string) (int, error) {
+
+	err := m.connect()
+
+	if err != nil {
+		return -1, err
+	}
+
+	c := m.Session.DB(m.Conf.GetDB()).C(collection)
+	err = c.RemoveId(id)
+
+	if err != nil {
+		return -1, err
+	}
+
+	return 0, nil
 }
 
 // CustomErrorLogger - Writes error

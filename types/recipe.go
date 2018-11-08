@@ -7,12 +7,12 @@ import (
 
 // Recipe domain
 type Recipe struct {
-	OID         string       `bson:"_id"`
-	ID          string       `bson:"id"`
-	Name        string       `bson:"name"`
-	Description string       `bson:"description"`
-	Steps       []string     `bson:"steps"`
-	Ingredients []Ingredient `bson:"ingredients"`
+	OID         string   `bson:"_id"`
+	ID          string   `bson:"id"`
+	Name        string   `bson:"name"`
+	Description string   `bson:"description"`
+	Steps       []string `bson:"steps"`
+	Ingredients []string `bson:"ingredients"`
 }
 
 // GetOID function
@@ -66,12 +66,12 @@ func (r *Recipe) SetSteps(steps []string) {
 }
 
 // SetIngredients function
-func (r *Recipe) SetIngredients(ingredients []Ingredient) {
+func (r *Recipe) SetIngredients(ingredients []string) {
 	r.Ingredients = ingredients
 }
 
 // GetIngredients function
-func (r *Recipe) GetIngredients() []Ingredient {
+func (r *Recipe) GetIngredients() []string {
 	return r.Ingredients
 }
 
