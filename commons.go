@@ -13,6 +13,18 @@ type LoggerTrait struct {
 	logger *log.Entry
 }
 
+// SetLogger - let's you configure a logger
+func (lt *LoggerTrait) SetLogger(l *log.Entry) {
+	if l != nil {
+		lt.logger = l
+	}
+}
+
+// GetLogger - returns the logger
+func (lt *LoggerTrait) GetLogger() *log.Entry {
+	return lt.logger
+}
+
 // MetadataObject interface
 type MetadataObject interface {
 	GetObjectInfo() string

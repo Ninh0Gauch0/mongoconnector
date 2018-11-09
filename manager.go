@@ -4,17 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 
 	"github.com/globalsign/mgo"
 	"github.com/globalsign/mgo/bson"
 	"github.com/leemcloughlin/logfile"
 	"github.com/ninh0gauch0/hrstypes"
+	"github.com/ninh0gauch0/mongoconnector/types"
 	log "github.com/sirupsen/logrus"
 )
 
 const (
-	version = "0.8.3-beta"
+	version = "0.8.8-beta"
 )
 
 var (
@@ -26,7 +28,11 @@ var (
 
 // Init - always called at the begining
 func (m *Manager) Init() bool {
-	contextLogger.Infof("Initializing HR mongo connector...")
+
+	// Contex configuration
+	mongoContext, cancelFunc := context.WithCancel(baseContext)
+	m.Ctx = mongoContext
+
 	// logger configuration
 	logger := log.StandardLogger()
 	logger.Formatter = &log.TextFormatter{
@@ -40,6 +46,9 @@ func (m *Manager) Init() bool {
 	contextLogger = logger.WithFields(log.Fields{
 		"mongo connector": "Home Recipes DB",
 	})
+	m.SetLogger(contextLogger)
+	m.logger.Infof("Initializing HR mongo connector...")
+	defer cancelFunc()
 
 	// Init logfile
 	logFile, err := logfile.New(
@@ -53,37 +62,20 @@ func (m *Manager) Init() bool {
 	}
 	log.SetOutput(logFile)
 
-	/*
-
-		//Reading configuration file
-		dat, err := ioutil.ReadFile("config/mongo.json")
-		if err != nil {
-			customErrorLogger(s, "Failed to read configuration mongodb file %s: %s", "mongoconf", err.Error())
-			return false
-		}
-
-		// Taking mongodb conf
-		var result mongoCon.MongoConf
-		err = json.Unmarshal(dat, &result)
-		if err != nil {
-			customErrorLogger(s, "Failed to unmarshal configuration json extracted from %s file: %s", "mongoconf", err.Error())
-			return false
-		}
-
-
-	*/
-
-	//filename is the path to the json config file
-	file, err := os.Open("./config/mongo.json")
+	//Reading configuration file
+	dat, err := ioutil.ReadFile("config/mongo.json")
 	if err != nil {
+		m.customErrorLogger("Failed to read configuration mongodb file mongoconf: ", err.Error())
 		return false
 	}
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(m.Conf)
+	conf := types.MongoConf{}
+	// Taking mongodb conf
+	err = json.Unmarshal(dat, &conf)
 	if err != nil {
+		m.customErrorLogger("Failed to unmarshal configuration json extracted from %s file: %s", "mongoconf", err.Error())
 		return false
-
 	}
+	m.Conf = &conf
 	m.Address = m.Conf.GetHost() + ":" + m.Conf.GetPort()
 	m.initialized = true
 	return true
@@ -99,7 +91,7 @@ func (m *Manager) connect() error {
 		}
 	}
 
-	m.logger.Infof("Starting mongo connector...")
+	m.logger.Infof("Connecting to %s database...", m.Conf.GetDB())
 
 	session, err := mgo.Dial(m.Address)
 	if err != nil {
@@ -223,9 +215,6 @@ func (m *Manager) ExecuteDelete(collection string, id string) (int, error) {
 func (m *Manager) customErrorLogger(msg string, args ...interface{}) {
 	MSG := "[ERROR] " + msg
 
-	m.logger.Errorf(MSG, args)
-	m.logger.Errorln()
-
 	if logFileOn {
 		log.Printf(MSG, args)
 	}
@@ -234,9 +223,6 @@ func (m *Manager) customErrorLogger(msg string, args ...interface{}) {
 // customInfoLogger - Writes info
 func (m *Manager) customInfoLogger(msg string, args ...interface{}) {
 	MSG := "[INFO] " + msg
-
-	m.logger.Infof(MSG, args)
-	m.logger.Infoln()
 
 	if logFileOn {
 		log.Printf(MSG, args)
