@@ -3,7 +3,6 @@ package mongoconnector
 import (
 	"context"
 
-	"github.com/globalsign/mgo"
 	"github.com/ninh0gauch0/mongoconnector/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -34,7 +33,6 @@ type MetadataObject interface {
 type Manager struct {
 	LoggerTrait
 	Ctx         context.Context
-	Session     *mgo.Session
 	initialized bool
 	Address     string
 	Conf        *types.MongoConf

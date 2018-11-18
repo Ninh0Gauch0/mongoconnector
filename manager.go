@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"time"
 
 	"github.com/globalsign/mgo"
 	"github.com/globalsign/mgo/bson"
@@ -16,7 +17,7 @@ import (
 )
 
 const (
-	version = "0.8.8-beta"
+	version = "0.8.9-beta"
 )
 
 var (
@@ -81,47 +82,72 @@ func (m *Manager) Init() bool {
 	return true
 }
 
+// getCollection - Given a mongo session, returns a collection instance
+func (m *Manager) getCollection(session mgo.Session, db string, coll string) *mgo.Collection {
+
+	fmt.Println("Creating collection ...")
+	collection := session.Copy().DB(db).C(coll)
+	fmt.Println("Collection created!")
+	return collection
+
+}
+
+func (m *Manager) getSession(db string) (*mgo.Session, error) {
+	fmt.Println("Creating session ...")
+
+	mongoDBDialInfo := &mgo.DialInfo{
+		Addrs:    []string{m.Address},
+		Timeout:  5 * time.Second,
+		Database: db,
+	}
+
+	mongoSession, err := mgo.DialWithInfo(mongoDBDialInfo)
+
+	if err != nil {
+		panic(err)
+		return nil, err
+	}
+
+	mongoSession.SetSocketTimeout(5 * time.Second)
+	mongoSession.SetMode(mgo.Monotonic, true)
+
+	session := mongoSession.New()
+
+	fmt.Println("Session created!")
+	return session, nil
+}
+
 // connect -
-func (m *Manager) connect() error {
+func (m *Manager) connect(coll string) (*mgo.Collection, error) {
 
 	if m.initialized != true {
 		err := m.Init()
 		if err {
-			return fmt.Errorf("Error initializating mongo connector")
+			return nil, fmt.Errorf("Error initializating mongo connector")
 		}
 	}
 
 	m.logger.Infof("Connecting to %s database...", m.Conf.GetDB())
 
-	session, err := mgo.Dial(m.Address)
+	session, err := m.getSession(m.Conf.GetDB())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer session.Close()
-	session.SetMode(mgo.Monotonic, true)
-	m.Session = session
 
-	return nil
-}
+	collection := m.getCollection(*session, m.Conf.GetDB(), coll)
 
-// CloseConnection -
-func (m *Manager) CloseConnection() {
-
-	if m.Session != nil {
-		m.Session.Close()
-	}
+	return collection, nil
 }
 
 // ExecuteInsert -
 func (m *Manager) ExecuteInsert(collection string, obj MetadataObject) (int, error) {
 
-	err := m.connect()
+	c, err := m.connect(collection)
 
 	if err != nil {
 		return -1, err
 	}
-
-	c := m.Session.DB(m.Conf.GetDB()).C(collection)
 
 	// Insert Datas
 	err = c.Insert(obj)
@@ -135,13 +161,11 @@ func (m *Manager) ExecuteInsert(collection string, obj MetadataObject) (int, err
 // ExecuteSearchByID -
 func (m *Manager) ExecuteSearchByID(collection string, id string) (MetadataObject, error) {
 
-	err := m.connect()
+	c, err := m.connect(collection)
 
 	if err != nil {
 		return nil, err
 	}
-
-	c := m.Session.DB(m.Conf.GetDB()).C(collection)
 
 	result := &hrstypes.Recipe{}
 	err = c.Find(bson.M{"id": id}).One(&result)
@@ -156,13 +180,11 @@ func (m *Manager) ExecuteSearchByID(collection string, id string) (MetadataObjec
 func (m *Manager) ExecuteSearch(collection string, query string) ([]MetadataObject, error) {
 	var results []MetadataObject
 
-	err := m.connect()
+	c, err := m.connect(collection)
 
 	if err != nil {
 		return nil, err
 	}
-
-	c := m.Session.DB(m.Conf.GetDB()).C(collection)
 
 	err = c.Find(nil).Sort("-id").All(&results)
 	if err != nil {
@@ -175,13 +197,12 @@ func (m *Manager) ExecuteSearch(collection string, query string) ([]MetadataObje
 // ExecuteUpdate -
 func (m *Manager) ExecuteUpdate(collection string, id string, obj MetadataObject) (int, error) {
 
-	err := m.connect()
+	c, err := m.connect(collection)
 
 	if err != nil {
 		return -1, err
 	}
 
-	c := m.Session.DB(m.Conf.GetDB()).C(collection)
 	colQuerier := bson.M{"id": id}
 	change := bson.M{"$set": obj}
 	err = c.Update(colQuerier, change)
@@ -195,13 +216,12 @@ func (m *Manager) ExecuteUpdate(collection string, id string, obj MetadataObject
 // ExecuteDelete -
 func (m *Manager) ExecuteDelete(collection string, id string) (int, error) {
 
-	err := m.connect()
+	c, err := m.connect(collection)
 
 	if err != nil {
 		return -1, err
 	}
 
-	c := m.Session.DB(m.Conf.GetDB()).C(collection)
 	err = c.RemoveId(id)
 
 	if err != nil {
