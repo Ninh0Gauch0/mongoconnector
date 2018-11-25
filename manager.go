@@ -11,7 +11,6 @@ import (
 	"github.com/globalsign/mgo"
 	"github.com/globalsign/mgo/bson"
 	"github.com/leemcloughlin/logfile"
-	"github.com/ninh0gauch0/hrstypes"
 	"github.com/ninh0gauch0/mongoconnector/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -104,7 +103,6 @@ func (m *Manager) getSession(db string) (*mgo.Session, error) {
 	mongoSession, err := mgo.DialWithInfo(mongoDBDialInfo)
 
 	if err != nil {
-		panic(err)
 		return nil, err
 	}
 
@@ -167,7 +165,8 @@ func (m *Manager) ExecuteSearchByID(collection string, id string) (MetadataObjec
 		return nil, err
 	}
 
-	result := &hrstypes.Recipe{}
+	// TODO: Comprobar qué tipo hay que devolver.
+	result := &types.Recipe{}
 	err = c.Find(bson.M{"id": id}).One(&result)
 	if err != nil {
 		m.customInfoLogger("No results for ID %s: %s", id, err.Error())
