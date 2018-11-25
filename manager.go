@@ -221,7 +221,8 @@ func (m *Manager) ExecuteDelete(collection string, id string) (int, error) {
 		return -1, err
 	}
 
-	err = c.RemoveId(id)
+	// Remove with BSON
+	err = c.Remove(bson.M{"id": id})
 
 	if err != nil {
 		return -1, err
