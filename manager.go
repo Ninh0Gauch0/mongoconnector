@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	version = "0.9.1-beta"
+	version = "0.9.0"
 	// INGREDIENTCOLL Constant
 	INGREDIENTCOLL = "ingredients"
 	// RECIPECOLL Constant
@@ -210,7 +210,7 @@ func (m *Manager) ExecuteSearch(collection string, query string) ([]hrstypes.Met
 	return results, nil
 }
 
-// ExecuteUpdate -
+// ExecuteUpdate - Uso de reflexión
 func (m *Manager) ExecuteUpdate(collection string, id string, obj hrstypes.MetadataObject) (hrstypes.MetadataObject, error) {
 
 	c, err := m.connect(collection)
@@ -225,12 +225,13 @@ func (m *Manager) ExecuteUpdate(collection string, id string, obj hrstypes.Metad
 		ReturnNew: true,
 	}
 
-	s := reflect.ValueOf(&obj).Elem()
-	typeOfT := s.Type()
+	// Si pasamos la interfaz, no debemos usar el & en valueOf. Si fuese un struct, si.
+	value := reflect.ValueOf(obj).Elem()
+	typeOfT := value.Type()
 	var patchDesc, patchName string
 
-	for i := 0; i < s.NumField(); i++ {
-		field := s.Field(i)
+	for i := 0; i < value.NumField(); i++ {
+		field := value.Field(i)
 		fmt.Printf("%d: %s %s = %v\n", i,
 			typeOfT.Field(i).Name, field.Type(), field.Interface())
 		if typeOfT.Field(i).Name == "Description" {
@@ -250,15 +251,8 @@ func (m *Manager) ExecuteUpdate(collection string, id string, obj hrstypes.Metad
 
 	if _, ok := obj.(*hrstypes.Ingredient); ok {
 		ingredient := &hrstypes.Ingredient{}
-
-		// err = c.Update(colQuerier, change)
-		// if err != nil {
-		// 	return -1, err
-		// }
-
-		//var doc *mgo.ChangeInfo
 		_, err = c.Find(colQuerier).Apply(change, &ingredient)
-		/////////
+
 		if err != nil {
 			m.customInfoLogger("No ingredients were found for ID %s: %s", id, err.Error())
 			return nil, err
