@@ -6,17 +6,22 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"time"
 
 	"github.com/globalsign/mgo"
 	"github.com/globalsign/mgo/bson"
 	"github.com/leemcloughlin/logfile"
-	"github.com/ninh0gauch0/mongoconnector/types"
+	"github.com/ninh0gauch0/hrstypes"
 	log "github.com/sirupsen/logrus"
 )
 
 const (
-	version = "0.8.9-beta"
+	version = "0.9.1-beta"
+	// INGREDIENTCOLL Constant
+	INGREDIENTCOLL = "ingredients"
+	// RECIPECOLL Constant
+	RECIPECOLL = "recipes"
 )
 
 var (
@@ -68,7 +73,7 @@ func (m *Manager) Init() bool {
 		m.customErrorLogger("Failed to read configuration mongodb file mongoconf: ", err.Error())
 		return false
 	}
-	conf := types.MongoConf{}
+	conf := hrstypes.MongoConf{}
 	// Taking mongodb conf
 	err = json.Unmarshal(dat, &conf)
 	if err != nil {
@@ -139,7 +144,7 @@ func (m *Manager) connect(coll string) (*mgo.Collection, error) {
 }
 
 // ExecuteInsert -
-func (m *Manager) ExecuteInsert(collection string, obj MetadataObject) (int, error) {
+func (m *Manager) ExecuteInsert(collection string, obj hrstypes.MetadataObject) (int, error) {
 
 	c, err := m.connect(collection)
 
@@ -152,32 +157,44 @@ func (m *Manager) ExecuteInsert(collection string, obj MetadataObject) (int, err
 	if err != nil {
 		return -1, err
 	}
-
 	return 0, nil
 }
 
 // ExecuteSearchByID -
-func (m *Manager) ExecuteSearchByID(collection string, id string) (MetadataObject, error) {
-
+func (m *Manager) ExecuteSearchByID(collection string, id string) (hrstypes.MetadataObject, error) {
 	c, err := m.connect(collection)
 
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: Comprobar qué tipo hay que devolver.
-	result := &types.Recipe{}
-	err = c.Find(bson.M{"id": id}).One(&result)
-	if err != nil {
-		m.customInfoLogger("No results for ID %s: %s", id, err.Error())
-		return nil, err
+	switch collection {
+	case INGREDIENTCOLL:
+		ingredient := &hrstypes.Ingredient{}
+		err = c.Find(bson.M{"_id": id}).One(&ingredient)
+
+		if err != nil {
+			m.customInfoLogger("No ingredients were found for ID %s: %s", id, err.Error())
+			return nil, err
+		}
+		return ingredient, nil
+	case RECIPECOLL:
+		fallthrough
+	default:
+		recipe := &hrstypes.Recipe{}
+		err = c.Find(bson.M{"_id": id}).One(&recipe)
+
+		if err != nil {
+			m.customInfoLogger("No recipes were found for ID %s: %s", id, err.Error())
+			return nil, err
+		}
+		return recipe, nil
 	}
-	return result, nil
 }
 
 // ExecuteSearch -
-func (m *Manager) ExecuteSearch(collection string, query string) ([]MetadataObject, error) {
-	var results []MetadataObject
+func (m *Manager) ExecuteSearch(collection string, query string) ([]hrstypes.MetadataObject, error) {
+	var results []hrstypes.MetadataObject
 
 	c, err := m.connect(collection)
 
@@ -185,7 +202,7 @@ func (m *Manager) ExecuteSearch(collection string, query string) ([]MetadataObje
 		return nil, err
 	}
 
-	err = c.Find(nil).Sort("-id").All(&results)
+	err = c.Find(nil).Sort("_id").All(&results)
 	if err != nil {
 		return nil, err
 	}
@@ -194,40 +211,83 @@ func (m *Manager) ExecuteSearch(collection string, query string) ([]MetadataObje
 }
 
 // ExecuteUpdate -
-func (m *Manager) ExecuteUpdate(collection string, id string, obj MetadataObject) (int, error) {
+func (m *Manager) ExecuteUpdate(collection string, id string, obj hrstypes.MetadataObject) (hrstypes.MetadataObject, error) {
 
 	c, err := m.connect(collection)
-
 	if err != nil {
-		return -1, err
+		return nil, err
+	}
+	colQuerier := bson.M{"_id": id}
+	change := mgo.Change{
+		Update:    nil,
+		Upsert:    false,
+		Remove:    false,
+		ReturnNew: true,
 	}
 
-	colQuerier := bson.M{"id": id}
-	change := bson.M{"$set": obj}
-	err = c.Update(colQuerier, change)
-	if err != nil {
-		return -1, err
+	s := reflect.ValueOf(&obj).Elem()
+	typeOfT := s.Type()
+	var patchDesc, patchName string
+
+	for i := 0; i < s.NumField(); i++ {
+		field := s.Field(i)
+		fmt.Printf("%d: %s %s = %v\n", i,
+			typeOfT.Field(i).Name, field.Type(), field.Interface())
+		if typeOfT.Field(i).Name == "Description" {
+			patchDesc = field.Interface().(string)
+		} else if typeOfT.Field(i).Name == "Name" {
+			patchName = field.Interface().(string)
+		}
+	}
+	// Building the update bson
+	if patchDesc != "" && patchName != "" {
+		change.Update = bson.M{"$set": bson.M{"name": patchName, "description": patchDesc}}
+	} else if patchDesc != "" {
+		change.Update = bson.M{"$set": bson.M{"description": patchDesc}}
+	} else if patchName != "" {
+		change.Update = bson.M{"$set": bson.M{"name": patchName}}
 	}
 
-	return 0, nil
+	if _, ok := obj.(*hrstypes.Ingredient); ok {
+		ingredient := &hrstypes.Ingredient{}
+
+		// err = c.Update(colQuerier, change)
+		// if err != nil {
+		// 	return -1, err
+		// }
+
+		//var doc *mgo.ChangeInfo
+		_, err = c.Find(colQuerier).Apply(change, &ingredient)
+		/////////
+		if err != nil {
+			m.customInfoLogger("No ingredients were found for ID %s: %s", id, err.Error())
+			return nil, err
+		}
+		return ingredient, nil
+	}
+	recipe := &hrstypes.Recipe{}
+	_, err = c.Find(bson.M{"_id": id}).Apply(change, &recipe)
+
+	if err != nil {
+		m.customInfoLogger("No recipes were found for ID %s: %s", id, err.Error())
+		return nil, err
+	}
+	return recipe, nil
+
 }
 
 // ExecuteDelete -
 func (m *Manager) ExecuteDelete(collection string, id string) (int, error) {
-
 	c, err := m.connect(collection)
 
 	if err != nil {
 		return -1, err
 	}
-
-	// Remove with BSON
-	err = c.Remove(bson.M{"id": id})
+	err = c.Remove(bson.M{"_id": id})
 
 	if err != nil {
 		return -1, err
 	}
-
 	return 0, nil
 }
 

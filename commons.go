@@ -3,7 +3,7 @@ package mongoconnector
 import (
 	"context"
 
-	"github.com/ninh0gauch0/mongoconnector/types"
+	"github.com/ninh0gauch0/hrstypes"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -24,16 +24,11 @@ func (lt *LoggerTrait) GetLogger() *log.Entry {
 	return lt.logger
 }
 
-// MetadataObject interface
-type MetadataObject interface {
-	GetObjectInfo() string
-}
-
 // Manager struct
 type Manager struct {
 	LoggerTrait
 	Ctx         context.Context
 	initialized bool
 	Address     string
-	Conf        *types.MongoConf
+	Conf        *hrstypes.MongoConf
 }
